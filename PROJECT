@@ -1,0 +1,42 @@
+domain: naffets.eu
+layout:
+- go.kubebuilder.io/v3
+projectName: ecs-deployment-manager
+repo: naffets.eu/ecs-deployment-manager
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: naffets.eu
+  group: ecs-deployment-manager
+  kind: TargetGroup
+  path: naffets.eu/ecs-deployment-manager/api/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: naffets.eu
+  group: ecs-deployment-manager
+  kind: TaskDefinition
+  path: naffets.eu/ecs-deployment-manager/api/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: naffets.eu
+  group: ecs-deployment-manager
+  kind: Service
+  path: naffets.eu/ecs-deployment-manager/api/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  domain: naffets.eu
+  group: ecs-deployment-manager
+  kind: ECSConfig
+  path: naffets.eu/ecs-deployment-manager/api/v1alpha1
+  version: v1alpha1
+version: "3"

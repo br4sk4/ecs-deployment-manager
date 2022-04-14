@@ -1,0 +1,8 @@
+apiVersion: ecs-deployment-manager.naffets.eu/v1alpha1
+kind: Service
+metadata:
+  name: serviceName
+spec:
+  launchType: FARGATE
+  desiredCount: 1
+  containerPort: 8080

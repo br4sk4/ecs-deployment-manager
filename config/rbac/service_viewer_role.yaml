@@ -1,0 +1,20 @@
+# permissions for end users to view services.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: service-viewer-role
+rules:
+- apiGroups:
+  - ecs-deployment-manager.naffets.eu
+  resources:
+  - services
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ecs-deployment-manager.naffets.eu
+  resources:
+  - services/status
+  verbs:
+  - get

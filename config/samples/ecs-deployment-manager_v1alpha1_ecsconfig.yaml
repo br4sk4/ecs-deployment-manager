@@ -1,0 +1,15 @@
+apiVersion: ecs-deployment-manager.naffets.eu/v1alpha1
+kind: ECSConfig
+metadata:
+  name: ecsconfig-defaults
+spec:
+  vpcId: vpc-123
+  subnets:
+    - subnet-123
+    - subnet-456
+    - subnet-789
+  securityGroups:
+    - sg-123
+  cluster: cluster
+  registryUrl: registryUrl
+  taskRoleArn: taskRoleArn

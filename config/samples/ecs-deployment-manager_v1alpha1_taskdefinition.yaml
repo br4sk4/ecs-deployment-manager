@@ -1,0 +1,15 @@
+apiVersion: ecs-deployment-manager.naffets.eu/v1alpha1
+kind: TaskDefinition
+metadata:
+  name: serviceName
+spec:
+  cpu: 256
+  memory: 512
+  compatibilities:
+    - FARGATE
+  networkMode: awsvpc
+  containerDefinition:
+    image: repository/image:latest
+    containerPort: 8080
+    hostPort: 8080
+

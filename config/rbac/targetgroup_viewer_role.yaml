@@ -1,0 +1,20 @@
+# permissions for end users to view targetgroups.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: targetgroup-viewer-role
+rules:
+- apiGroups:
+  - ecs-deployment-manager.naffets.eu
+  resources:
+  - targetgroups
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ecs-deployment-manager.naffets.eu
+  resources:
+  - targetgroups/status
+  verbs:
+  - get

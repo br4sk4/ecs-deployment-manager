@@ -1,0 +1,20 @@
+apiVersion: ecs-deployment-manager.naffets.eu/v1alpha1
+kind: TargetGroup
+metadata:
+  name: serviceName
+spec:
+  targetType: ip
+  port: 80
+  protocol: http
+  protocolVersion: http1
+  healthCheck:
+    enabled: true
+    path: /health
+    protocol: http
+    interval: 20
+    timeout: 19
+    healthyThreshold: 2
+    unhealthyThreshold: 10
+  loadBalancer:
+    name: loadbalancerName
+    pathPattern: /context-root/*

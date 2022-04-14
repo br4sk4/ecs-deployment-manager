@@ -1,0 +1,24 @@
+# permissions for end users to edit targetgroups.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: targetgroup-editor-role
+rules:
+- apiGroups:
+  - ecs-deployment-manager.naffets.eu
+  resources:
+  - targetgroups
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ecs-deployment-manager.naffets.eu
+  resources:
+  - targetgroups/status
+  verbs:
+  - get
