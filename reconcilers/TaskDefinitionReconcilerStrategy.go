@@ -52,9 +52,8 @@ func (t TaskDefinitionReconcilerStrategy) AddFinalizer(ctx context.Context) (ctr
 }
 
 func (t TaskDefinitionReconcilerStrategy) ExecuteReconcilation(ctx context.Context) (ctrl.Result, error) {
+	config := getConfigAWS(ctx, t)
 	if !t.TaskDefinition.Status.Synced {
-		config := getConfigAWS(ctx, t)
-
 		if taskDefinitionArn, err := t.createTaskDefinition(ctx, config, t.TaskDefinition); err != nil {
 			return ctrl.Result{RequeueAfter: 5 * time.Second}, err
 		} else {
@@ -64,6 +63,18 @@ func (t TaskDefinitionReconcilerStrategy) ExecuteReconcilation(ctx context.Conte
 
 		if err := t.Status().Update(ctx, t.TaskDefinition); err != nil {
 			return ctrl.Result{RequeueAfter: 5 * time.Second}, err
+		}
+	} else {
+		if taskDefinitionArn, err := t.updateTaskDefinition(ctx, config, t.TaskDefinition); err != nil {
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, err
+		} else {
+			if taskDefinitionArn != "" && taskDefinitionArn != t.TaskDefinition.Status.TaskDefinitionArn {
+				t.TaskDefinition.Status.TaskDefinitionArn = taskDefinitionArn
+				if err := t.Status().Update(ctx, t.TaskDefinition); err != nil {
+					return ctrl.Result{RequeueAfter: 5 * time.Second}, err
+				}
+			}
+
 		}
 	}
 	return ctrl.Result{}, nil
@@ -150,6 +161,56 @@ func (t *TaskDefinitionReconcilerStrategy) createTaskDefinition(ctx context.Cont
 	}
 
 	return aws.ToString(awsTaskDefinition.TaskDefinition.TaskDefinitionArn), nil
+}
+
+func (t *TaskDefinitionReconcilerStrategy) updateTaskDefinition(ctx context.Context, config *aws.Config, taskDefinition *v1alpha1.TaskDefinition) (string, error) {
+	ecsClient := ecs.NewFromConfig(*config)
+
+	awsTaskDefinition, err := ecsClient.DescribeTaskDefinition(ctx, &ecs.DescribeTaskDefinitionInput{
+		TaskDefinition: &taskDefinition.Name,
+	})
+
+	if err != nil {
+		return "", nil
+	}
+
+	ecsConfig, err := getConfigECS(ctx, t, taskDefinition.Namespace)
+	if err != nil {
+		return "", err
+	}
+
+	image := taskDefinition.Spec.ContainerDefinition.RegistryUrl
+	if image == "" {
+		image = ecsConfig.Spec.RegistryUrl
+	}
+	image = image + "/" + taskDefinition.Spec.ContainerDefinition.Image
+
+	if *awsTaskDefinition.TaskDefinition.ContainerDefinitions[0].Image != image {
+		err = t.deleteTaskDefinition(ctx, config, taskDefinition.Status.TaskDefinitionArn)
+		if err != nil {
+			return "", err
+		}
+
+		newTaskDefinitionArn, err := t.createTaskDefinition(ctx, config, taskDefinition)
+		if err != nil {
+			return "", err
+		}
+
+		cluster := "naffets"
+		_, err = ecsClient.UpdateService(ctx, &ecs.UpdateServiceInput{
+			Cluster:            &cluster,
+			Service:            &taskDefinition.Name,
+			TaskDefinition:     &newTaskDefinitionArn,
+			ForceNewDeployment: true,
+		})
+		if err != nil {
+			return "", err
+		}
+
+		return aws.ToString(&newTaskDefinitionArn), nil
+	}
+
+	return "", nil
 }
 
 func (t *TaskDefinitionReconcilerStrategy) deleteTaskDefinition(ctx context.Context, config *aws.Config, taskDefinitionArn string) error {
