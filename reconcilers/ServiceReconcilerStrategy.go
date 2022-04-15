@@ -89,73 +89,37 @@ func (s *ServiceReconcilerStrategy) ExecuteFinalizer(ctx context.Context) (ctrl.
 
 func (s *ServiceReconcilerStrategy) createService(ctx context.Context, config *aws.Config, service *v1alpha1.Service) (string, error) {
 	ecsClient := ecs.NewFromConfig(*config)
-
-	targetGroupName := types.NamespacedName{
-		Namespace: service.Namespace,
-		Name:      service.Name,
-	}
-	targetGroupArn, err := s.getTargetGroupArn(ctx, targetGroupName)
-	if err != nil {
-		return "", err
-	}
-
-	taskDefinitionName := types.NamespacedName{
-		Namespace: service.Namespace,
-		Name:      service.Name,
-	}
-	taskDefinitionArn, err := s.getTaskDefinitionArn(ctx, taskDefinitionName)
-	if err != nil {
-		return "", err
-	}
-
 	ecsConfig, err := getConfigECS(ctx, s, service.Namespace)
 	if err != nil {
 		return "", err
 	}
 
-	cluster := service.Spec.Cluster
-	if cluster == "" {
-		cluster = ecsConfig.Spec.Cluster
+	targetGroupArn, err := s.getTargetGroupArn(ctx, types.NamespacedName{
+		Namespace: service.Namespace,
+		Name:      service.Name,
+	})
+	if err != nil {
+		return "", err
 	}
 
-	subnets := service.Spec.Subnets
-	if subnets == nil || len(subnets) == 0 {
-		subnets = ecsConfig.Spec.Subnets
-	}
-
-	securityGroups := service.Spec.SecurityGroups
-	if securityGroups == nil || len(securityGroups) == 0 {
-		securityGroups = ecsConfig.Spec.SecurityGroups
-	}
-
-	desiredCount := int32(service.Spec.DesiredCount)
-	containerPort := int32(service.Spec.ContainerPort)
-
-	networkConfiguration := &ecsTypes.NetworkConfiguration{
-		AwsvpcConfiguration: &ecsTypes.AwsVpcConfiguration{
-			Subnets:        subnets,
-			SecurityGroups: securityGroups,
-		},
-	}
-
-	loadBalancers := []ecsTypes.LoadBalancer{
-		{
-			ContainerName:  &service.Name,
-			ContainerPort:  &containerPort,
-			TargetGroupArn: &targetGroupArn,
-		},
+	taskDefinitionArn, err := s.getTaskDefinitionArn(ctx, types.NamespacedName{
+		Namespace: service.Namespace,
+		Name:      service.Name,
+	})
+	if err != nil {
+		return "", err
 	}
 
 	awsService, err := ecsClient.CreateService(context.Background(), &ecs.CreateServiceInput{
-		ServiceName:          &service.Name,
-		Cluster:              &cluster,
-		LaunchType:           service.Spec.LaunchType,
-		TaskDefinition:       &taskDefinitionArn,
-		DesiredCount:         &desiredCount,
-		NetworkConfiguration: networkConfiguration,
-		LoadBalancers:        loadBalancers,
+		ServiceName:             &service.Name,
+		Cluster:                 s.getOrDefaultCluster(service, ecsConfig),
+		DeploymentConfiguration: s.getDeploymentConfig(),
+		DesiredCount:            s.getDesiredCount(service),
+		LaunchType:              service.Spec.LaunchType,
+		LoadBalancers:           s.getLoadBalancerConfig(service, targetGroupArn),
+		NetworkConfiguration:    s.getNetworkConfig(service, ecsConfig),
+		TaskDefinition:          &taskDefinitionArn,
 	})
-
 	if err != nil {
 		return "", err
 	}
@@ -164,32 +128,18 @@ func (s *ServiceReconcilerStrategy) createService(ctx context.Context, config *a
 }
 
 func (s *ServiceReconcilerStrategy) deleteService(ctx context.Context, config *aws.Config, service *v1alpha1.Service) error {
-	logger := log.FromContext(ctx)
 	ecsClient := ecs.NewFromConfig(*config)
-
-	cluster := service.Spec.Cluster
-
 	ecsConfig, err := getConfigECS(ctx, s, service.Namespace)
-	if err == nil {
-		cluster = ecsConfig.Spec.Cluster
+	if err != nil {
+		return err
 	}
 
-	taskList, err := ecsClient.ListTasks(ctx, &ecs.ListTasksInput{
-		Cluster:     &cluster,
-		ServiceName: &service.Name,
-	})
-	if err == nil {
-		for _, task := range taskList.TaskArns {
-			if _, taskStopError := ecsClient.StopTask(ctx, &ecs.StopTaskInput{Task: &task, Cluster: &cluster}); taskStopError != nil {
-				logger.Error(taskStopError, "could not stop task "+task)
-			}
-		}
-	} else {
-		logger.Error(err, "could not determine tasks to stop")
-	}
+	cluster := s.getOrDefaultCluster(service, ecsConfig)
+
+	s.stopTasks(ctx, ecsClient, service, cluster)
 
 	forceDeletion := true
-	if _, err := ecsClient.DeleteService(ctx, &ecs.DeleteServiceInput{Cluster: &cluster, Service: &service.Status.ServiceArn, Force: &forceDeletion}); err != nil {
+	if _, err := ecsClient.DeleteService(ctx, &ecs.DeleteServiceInput{Cluster: cluster, Service: &service.Status.ServiceArn, Force: &forceDeletion}); err != nil {
 		return err
 	}
 
@@ -220,4 +170,83 @@ func (s *ServiceReconcilerStrategy) getTaskDefinitionArn(ctx context.Context, ta
 	}
 
 	return taskDefinition.Status.TaskDefinitionArn, nil
+}
+
+func (s *ServiceReconcilerStrategy) getOrDefaultCluster(service *v1alpha1.Service, ecsConfig *v1alpha1.ECSConfig) *string {
+	cluster := service.Spec.Cluster
+	if cluster == "" {
+		cluster = ecsConfig.Spec.Cluster
+	}
+	return &cluster
+}
+
+func (s *ServiceReconcilerStrategy) getNetworkConfig(service *v1alpha1.Service, ecsConfig *v1alpha1.ECSConfig) *ecsTypes.NetworkConfiguration {
+	subnets := service.Spec.Subnets
+	if subnets == nil || len(subnets) == 0 {
+		subnets = ecsConfig.Spec.Subnets
+	}
+
+	securityGroups := service.Spec.SecurityGroups
+	if securityGroups == nil || len(securityGroups) == 0 {
+		securityGroups = ecsConfig.Spec.SecurityGroups
+	}
+
+	networkConfiguration := &ecsTypes.NetworkConfiguration{
+		AwsvpcConfiguration: &ecsTypes.AwsVpcConfiguration{
+			Subnets:        subnets,
+			SecurityGroups: securityGroups,
+		},
+	}
+
+	return networkConfiguration
+}
+
+func (s *ServiceReconcilerStrategy) getLoadBalancerConfig(service *v1alpha1.Service, targetGroupArn string) []ecsTypes.LoadBalancer {
+	containerPort := int32(service.Spec.ContainerPort)
+
+	loadBalancers := []ecsTypes.LoadBalancer{
+		{
+			ContainerName:  &service.Name,
+			ContainerPort:  &containerPort,
+			TargetGroupArn: &targetGroupArn,
+		},
+	}
+
+	return loadBalancers
+}
+
+func (s *ServiceReconcilerStrategy) getDesiredCount(service *v1alpha1.Service) *int32 {
+	desiredCount := int32(service.Spec.DesiredCount)
+	return &desiredCount
+}
+
+func (s *ServiceReconcilerStrategy) getDeploymentConfig() *ecsTypes.DeploymentConfiguration {
+	maximumPercent := int32(200)
+	minimumHealthyPercent := int32(100)
+	deploymentConfig := &ecsTypes.DeploymentConfiguration{
+		DeploymentCircuitBreaker: &ecsTypes.DeploymentCircuitBreaker{
+			Enable:   true,
+			Rollback: true,
+		},
+		MaximumPercent:        &maximumPercent,
+		MinimumHealthyPercent: &minimumHealthyPercent,
+	}
+	return deploymentConfig
+}
+
+func (s *ServiceReconcilerStrategy) stopTasks(ctx context.Context, ecsClient *ecs.Client, service *v1alpha1.Service, cluster *string) {
+	logger := log.FromContext(ctx)
+	taskList, err := ecsClient.ListTasks(ctx, &ecs.ListTasksInput{
+		Cluster:     cluster,
+		ServiceName: &service.Name,
+	})
+	if err == nil {
+		for _, task := range taskList.TaskArns {
+			if _, taskStopError := ecsClient.StopTask(ctx, &ecs.StopTaskInput{Task: &task, Cluster: cluster}); taskStopError != nil {
+				logger.Error(taskStopError, "could not stop task "+task)
+			}
+		}
+	} else {
+		logger.Error(err, "could not determine tasks to stop")
+	}
 }
