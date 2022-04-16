@@ -98,34 +98,13 @@ func (t TaskDefinitionReconcilerStrategy) ExecuteFinalizer(ctx context.Context) 
 
 func (t *TaskDefinitionReconcilerStrategy) createTaskDefinition(ctx context.Context, config *aws.Config, taskDefinition *v1alpha1.TaskDefinition) (string, error) {
 	ecsClient := ecs.NewFromConfig(*config)
-
-	essential := true
-
-	cpuString := strconv.Itoa(taskDefinition.Spec.Cpu)
-	memoryString := strconv.Itoa(taskDefinition.Spec.Memory)
-
-	containerPort := int32(taskDefinition.Spec.ContainerDefinition.ContainerPort)
-	hostPort := int32(taskDefinition.Spec.ContainerDefinition.HostPort)
-
-	logOptions := make(map[string]string)
-	logOptions["awslogs-group"] = taskDefinition.Name
-	logOptions["awslogs-region"] = config.Region
-	logOptions["awslogs-stream-prefix"] = taskDefinition.Name
-	logConfiguration := ecsTypes.LogConfiguration{
-		LogDriver: "awslogs",
-		Options:   logOptions,
-	}
-
 	ecsConfig, err := getConfigECS(ctx, t, taskDefinition.Namespace)
 	if err != nil {
 		return "", err
 	}
 
-	image := taskDefinition.Spec.ContainerDefinition.RegistryUrl
-	if image == "" {
-		image = ecsConfig.Spec.RegistryUrl
-	}
-	image = image + "/" + taskDefinition.Spec.ContainerDefinition.Image
+	cpuString := strconv.Itoa(taskDefinition.Spec.Cpu)
+	memoryString := strconv.Itoa(taskDefinition.Spec.Memory)
 
 	taskRoleArn := taskDefinition.Spec.TaskRoleArn
 	if taskRoleArn == "" {
@@ -140,20 +119,7 @@ func (t *TaskDefinitionReconcilerStrategy) createTaskDefinition(ctx context.Cont
 		NetworkMode:             taskDefinition.Spec.NetworkMode,
 		TaskRoleArn:             &taskRoleArn,
 		ExecutionRoleArn:        &taskRoleArn,
-		ContainerDefinitions: []ecsTypes.ContainerDefinition{
-			{
-				Name:      &taskDefinition.Name,
-				Image:     &image,
-				Essential: &essential,
-				PortMappings: []ecsTypes.PortMapping{
-					{
-						ContainerPort: &containerPort,
-						HostPort:      &hostPort,
-					},
-				},
-				LogConfiguration: &logConfiguration,
-			},
-		},
+		ContainerDefinitions:    t.getConainerDefinitions(taskDefinition, config, ecsConfig),
 	})
 
 	if err != nil {
@@ -165,27 +131,21 @@ func (t *TaskDefinitionReconcilerStrategy) createTaskDefinition(ctx context.Cont
 
 func (t *TaskDefinitionReconcilerStrategy) updateTaskDefinition(ctx context.Context, config *aws.Config, taskDefinition *v1alpha1.TaskDefinition) (string, error) {
 	ecsClient := ecs.NewFromConfig(*config)
-
-	awsTaskDefinition, err := ecsClient.DescribeTaskDefinition(ctx, &ecs.DescribeTaskDefinitionInput{
-		TaskDefinition: &taskDefinition.Name,
-	})
-
-	if err != nil {
-		return "", nil
-	}
-
 	ecsConfig, err := getConfigECS(ctx, t, taskDefinition.Namespace)
 	if err != nil {
 		return "", err
 	}
 
-	image := taskDefinition.Spec.ContainerDefinition.RegistryUrl
-	if image == "" {
-		image = ecsConfig.Spec.RegistryUrl
+	awsTaskDefinition, err := ecsClient.DescribeTaskDefinition(ctx, &ecs.DescribeTaskDefinitionInput{
+		TaskDefinition: &taskDefinition.Name,
+	})
+	if err != nil {
+		return "", nil
 	}
-	image = image + "/" + taskDefinition.Spec.ContainerDefinition.Image
 
-	if *awsTaskDefinition.TaskDefinition.ContainerDefinitions[0].Image != image {
+	image := t.getOrDefaultImage(taskDefinition, ecsConfig)
+
+	if *awsTaskDefinition.TaskDefinition.ContainerDefinitions[0].Image != *image {
 		err = t.deleteTaskDefinition(ctx, config, taskDefinition.Status.TaskDefinitionArn)
 		if err != nil {
 			return "", err
@@ -221,4 +181,43 @@ func (t *TaskDefinitionReconcilerStrategy) deleteTaskDefinition(ctx context.Cont
 	}
 
 	return nil
+}
+
+func (t *TaskDefinitionReconcilerStrategy) getConainerDefinitions(taskDefinition *v1alpha1.TaskDefinition, config *aws.Config, ecsConfig *v1alpha1.ECSConfig) []ecsTypes.ContainerDefinition {
+	essential := true
+	containerPort := int32(taskDefinition.Spec.ContainerDefinition.ContainerPort)
+	hostPort := int32(taskDefinition.Spec.ContainerDefinition.HostPort)
+
+	logOptions := make(map[string]string)
+	logOptions["awslogs-group"] = taskDefinition.Name
+	logOptions["awslogs-region"] = config.Region
+	logOptions["awslogs-stream-prefix"] = taskDefinition.Name
+	logConfiguration := ecsTypes.LogConfiguration{
+		LogDriver: "awslogs",
+		Options:   logOptions,
+	}
+
+	return []ecsTypes.ContainerDefinition{
+		{
+			Name:      &taskDefinition.Name,
+			Image:     t.getOrDefaultImage(taskDefinition, ecsConfig),
+			Essential: &essential,
+			PortMappings: []ecsTypes.PortMapping{
+				{
+					ContainerPort: &containerPort,
+					HostPort:      &hostPort,
+				},
+			},
+			LogConfiguration: &logConfiguration,
+		},
+	}
+}
+
+func (t *TaskDefinitionReconcilerStrategy) getOrDefaultImage(taskDefinition *v1alpha1.TaskDefinition, ecsConfig *v1alpha1.ECSConfig) *string {
+	image := taskDefinition.Spec.ContainerDefinition.RegistryUrl
+	if image == "" {
+		image = ecsConfig.Spec.RegistryUrl
+	}
+	image = image + "/" + taskDefinition.Spec.ContainerDefinition.Image
+	return &image
 }
