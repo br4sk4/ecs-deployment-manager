@@ -52,7 +52,7 @@ func (t TaskDefinitionReconcilerStrategy) AddFinalizer(ctx context.Context) (ctr
 }
 
 func (t TaskDefinitionReconcilerStrategy) ExecuteReconcilation(ctx context.Context) (ctrl.Result, error) {
-	config := getConfigAWS(ctx, t)
+	config := getConfigAWS(ctx, t, t.TaskDefinition.Namespace)
 	if !t.TaskDefinition.Status.Synced {
 		if taskDefinitionArn, err := t.createTaskDefinition(ctx, config, t.TaskDefinition); err != nil {
 			return ctrl.Result{RequeueAfter: 5 * time.Second}, err
@@ -82,7 +82,7 @@ func (t TaskDefinitionReconcilerStrategy) ExecuteReconcilation(ctx context.Conte
 
 func (t TaskDefinitionReconcilerStrategy) ExecuteFinalizer(ctx context.Context) (ctrl.Result, error) {
 	if controllerutil.ContainsFinalizer(t.TaskDefinition, taskDedfinitionFinalizerName) {
-		config := getConfigAWS(ctx, t)
+		config := getConfigAWS(ctx, t, t.TaskDefinition.Namespace)
 
 		if err := t.deleteTaskDefinition(ctx, config, t.TaskDefinition.Status.TaskDefinitionArn); err != nil {
 			return ctrl.Result{RequeueAfter: 5 * time.Second}, err

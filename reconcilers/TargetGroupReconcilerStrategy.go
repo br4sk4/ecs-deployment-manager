@@ -54,7 +54,7 @@ func (t TargetGroupReconcilerStrategy) AddFinalizer(ctx context.Context) (ctrl.R
 
 func (t TargetGroupReconcilerStrategy) ExecuteReconcilation(ctx context.Context) (ctrl.Result, error) {
 	if !t.TargetGroup.Status.Synced {
-		config := getConfigAWS(ctx, t)
+		config := getConfigAWS(ctx, t, t.TargetGroup.Namespace)
 
 		if targetGroupArn, err := t.createTargetGroup(ctx, config, t.TargetGroup); err != nil {
 			return ctrl.Result{RequeueAfter: 5 * time.Second}, err
@@ -79,7 +79,7 @@ func (t TargetGroupReconcilerStrategy) ExecuteReconcilation(ctx context.Context)
 
 func (t TargetGroupReconcilerStrategy) ExecuteFinalizer(ctx context.Context) (ctrl.Result, error) {
 	if controllerutil.ContainsFinalizer(t.TargetGroup, targetGroupFinalizerName) {
-		config := getConfigAWS(ctx, t)
+		config := getConfigAWS(ctx, t, t.TargetGroup.Namespace)
 
 		if err := t.deleteListenerRule(ctx, config, t.TargetGroup.Status.ListenerRuleArn); err != nil {
 			return ctrl.Result{RequeueAfter: 5 * time.Second}, err

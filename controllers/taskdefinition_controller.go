@@ -36,6 +36,8 @@ const taskDedfinitionFinalizerName = "naffets.eu/TaskDefinitionFinalizer"
 //+kubebuilder:rbac:groups=ecs-deployment-manager.naffets.eu,resources=taskdefinitions,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=ecs-deployment-manager.naffets.eu,resources=taskdefinitions/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=ecs-deployment-manager.naffets.eu,resources=taskdefinitions/finalizers,verbs=update
+//+kubebuilder:rbac:groups=ecs-deployment-manager.naffets.eu,resources=ecsconfigs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.

@@ -55,7 +55,7 @@ func (s *ServiceReconcilerStrategy) AddFinalizer(ctx context.Context) (ctrl.Resu
 
 func (s *ServiceReconcilerStrategy) ExecuteReconcilation(ctx context.Context) (ctrl.Result, error) {
 	if !s.Service.Status.Synced {
-		config := getConfigAWS(ctx, s.Client)
+		config := getConfigAWS(ctx, s.Client, s.Service.Namespace)
 
 		if serviceArn, err := s.createService(ctx, config, s.Service); err != nil {
 			return ctrl.Result{RequeueAfter: 5 * time.Second}, err
@@ -73,7 +73,7 @@ func (s *ServiceReconcilerStrategy) ExecuteReconcilation(ctx context.Context) (c
 
 func (s *ServiceReconcilerStrategy) ExecuteFinalizer(ctx context.Context) (ctrl.Result, error) {
 	if controllerutil.ContainsFinalizer(s.Service, serviceFinalizerName) {
-		config := getConfigAWS(ctx, s)
+		config := getConfigAWS(ctx, s, s.Service.Namespace)
 
 		if err := s.deleteService(ctx, config, s.Service); err != nil {
 			return ctrl.Result{RequeueAfter: 5 * time.Second}, err

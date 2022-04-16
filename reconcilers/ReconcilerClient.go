@@ -92,11 +92,11 @@ func getConfigECS(ctx context.Context, client client.Client, namespace string) (
 	return &ecsConfig, err
 }
 
-func getConfigAWS(ctx context.Context, client client.Client) *aws.Config {
+func getConfigAWS(ctx context.Context, client client.Client, namespace string) *aws.Config {
 	logger := log.FromContext(ctx)
 
 	secretName := types.NamespacedName{
-		Namespace: "default",
+		Namespace: namespace,
 		Name:      "aws-secret",
 	}
 	var awsSecret v1.Secret
